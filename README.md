@@ -1,53 +1,55 @@
-# NarrowNet — A CPU-Favoring, GPU-Resistant Proof-of-Work
+# CPU Consensus Lab
 
-*[中文说明见下方](#中文说明) · [完整攻击面分析](docs/security-analysis.zh.md)*
+*[中文说明见下方](#中文说明)*
 
-A proof-of-work function whose computation **is** a neural-network forward pass — but shaped
-so that every dimension works against GPUs: **width 8, depth in the millions, FP64, and a
-per-nonce mutable weight pool that caps GPU parallelism at `VRAM ÷ pool_size`.**
+Three designs attacking one question: **can consensus work be made to favor CPUs and small
+machines over GPUs — and if so, at what cost?**
 
-> **This repo reports measured numbers, including the ones that contradict its own earlier design claims.**
-> A cost model that was off by 15× is documented in full, along with what it invalidated.
+This is a lab, not a product. Each design is carried far enough to identify the single experiment
+that would kill it, and those experiments are named explicitly. One of them has already fired: a
+cost model here was **wrong by 15×**, and what it invalidated is documented rather than quietly
+edited out.
 
 ---
 
-## The idea in one table
+## The three designs
 
-Real AI workloads are exactly what GPUs are built for. So invert every dimension:
+| | **NarrowNet** | **PoRT** | **SAT-PoUW** |
+|---|---|---|---|
+| **Scarce resource** | Memory capacity | Network position | Solver quality |
+| **Anti-GPU mechanism** | Manufactured (FP64, serial chain, per-nonce pool) | Network latency dominates critical path | **Inherent to the problem** |
+| **Verification cost** | Full recomputation | ~640 ms | ✅ **O(n) — check the assignment** |
+| **Is the work useful?** | No | No | ✅ **Yes** |
+| **Measured?** | ✅ Calibrated | ❌ No | ❌ No |
+| **What would kill it** | Pool < 1 GB → GPU wins | Per-IP quota signal too thin | Solvers scale linearly across cores |
+| **Central risk** | Needs ≥1 GB per instance | IP wholesale (/24) attack | **Secret solver = mining advantage** |
 
-| Dimension | Conventional AI (GPU's home turf) | NarrowNet (CPU's home turf) |
+The trajectory across the three is the interesting part: NarrowNet and PoRT go to considerable
+length to *manufacture* GPU-hostility. SAT solving simply **is** that shape — and two decades of
+failed GPU SAT research is itself the security property.
+
+---
+
+### NarrowNet — a neural network shaped against GPUs
+
+`src/narrownet_v3.py` · [full attack-surface analysis](docs/security-analysis.zh.md) (Chinese)
+
+A proof-of-work whose computation *is* a neural-network forward pass, with every dimension
+inverted from what GPUs are built for:
+
+| Dimension | Conventional AI | NarrowNet |
 |---|---|---|
 | Width | 4096+ | **8** (one AVX-512 FP64 vector) |
-| Depth | tens of layers | **10⁵–10⁶ layers** |
+| Depth | tens of layers | **10⁵–10⁶** |
 | Batch | thousands | **1** |
 | Precision | FP16 / BF16 | **FP64, strict IEEE** |
-| Weights | resident in VRAM, reused | **fetched per-layer from a mutable pool, address chosen by the previous activation** |
+| Weights | resident in VRAM, reused | **per-layer fetch from a mutable pool, address set by the previous activation** |
 
-It is still a genuine neural network — matrix-vector products, a nonlinearity, residual
-connections, and normalization — just in a shape no trained model would ever use.
+The load-bearing lever is the **per-nonce mutable pool**, which caps GPU parallelism at
+`VRAM ÷ pool_size` regardless of core count. A copy-on-write bypass of exactly this was found and
+fixed in v2 (measured: 0 / 2,097,152 shared entries between nonces).
 
-## Defense levers (and which ones turned out to be fake)
-
-| Lever | Blocks | Strength |
-|---|---|---|
-| **Per-chain exclusive memory pool** | Caps GPU parallelism at `VRAM ÷ pool`, independent of core count | ⭐⭐⭐⭐⭐ |
-| **Per-nonce pool (CoW immunity)** | Blocks the copy-on-write bypass of the above | ⭐⭐⭐⭐⭐ |
-| **FP64 division** (8 per step) | Consumer GPUs run FP64 at 1/64 rate; division multiplies that penalty | ⭐⭐⭐⭐ |
-| **FP64 strict IEEE** | Silicon-level handicap on consumer GPUs | ⭐⭐⭐⭐ |
-| **Serial dependency chain** | No intra-chain parallelism | ⭐⭐⭐⭐ |
-| **Pointer chasing** | Address depends on previous activation — no prefetch, no coalescing | ⭐⭐⭐⭐ |
-| ~~Narrow width wastes warps~~ | ❌ **Fails** under one-thread-per-nonce | — |
-| ~~Kernel launch overhead~~ | ❌ **Fails** under a persistent megakernel | — |
-
-The last two were claimed in early design notes and are **retracted** — a rational attacker
-runs one independent chain per GPU thread, which defeats both.
-
-## Measured results
-
-Intel Core Ultra 5 125H (Meteor Lake, **no AVX-512**), pinned to a P-core, 4.25 GHz measured,
-Numba/LLVM JIT native code, minimum of 5 runs.
-
-**The memory lever is real:**
+**Measured** (Core Ultra 5 125H, no AVX-512, P-core pinned, 4.25 GHz, min of 5 runs):
 
 | Pool | ns/step | cycles/step | vs 2 MB |
 |---|---|---|---|
@@ -56,160 +58,154 @@ Numba/LLVM JIT native code, minimum of 5 runs.
 | 64 MB | 212.3 | 902 | 3.25× |
 | 256 MB | 245.5 | 1043 | **3.75×** |
 
-**Correctness:**
+**The finding that reversed the design's own conclusion:**
 
-```
-Determinism (same seed+nonce)     : True
-Avalanche (1-bit nonce change)    : 132/256 bits  (ideal ≈128)
-CoW immunity (pool overlap)       : 0 / 2,097,152 entries  (0.0000%)
-Numerical health                  : NaN=0  Inf=0  denormal=0
-```
-
-## ⚠️ The headline finding: pool size decides everything
-
-Using **measured** CPU cost (not the earlier 15×-wrong model), against an estimated GPU at
-~420 ns/step (memory-latency-bound at low occupancy):
-
-| Pool | GPU parallel chains | CPU/GPU throughput | CPU/GPU per dollar | Verdict |
+| Pool | GPU parallel chains | CPU/GPU throughput | per dollar | |
 |---|---|---|---|---|
-| 16 MB | 2,048 | 0.09× | 0.18× | ❌ GPU wins big |
 | 64 MB | 512 | 0.22× | 0.45× | ❌ GPU wins |
 | 256 MB | 128 | 0.78× | 1.56× | ~ tie |
-| **1 GB** | **32** | **2.93×** | **5.85×** | ✅ CPU wins |
-| **2 GB** | **16** | **5.43×** | **10.86×** | ✅ CPU wins decisively |
+| **1 GB** | **32** | **2.93×** | **5.85×** | ✅ |
+| **2 GB** | **16** | **5.43×** | **10.86×** | ✅ |
 
-**A pool of ≥1 GB is required for a decisive CPU advantage.**
+An earlier version of this README claimed a 2.8× CPU advantage at 64 MB. That was built on the
+15×-wrong cost model; the real figure is GPU winning by 4.5×. **A pool of ≥1 GB is required** —
+independently reproducing the rationale behind Monero RandomX's 2 GB dataset.
 
-This independently reproduces the rationale behind Monero RandomX's 2 GB dataset — that
-parameter is not arbitrary, it is the threshold where the memory lever actually bites.
+---
 
-### What this means for browser use (anti-bot / anti-AI-scraper)
+### PoRT — Proof of Round Trips
 
-Browsers cannot allocate 1 GB, so **NarrowNet does not give CPUs an advantage in a browser.**
-But "CPU beats GPU" was never the right goal for bot defense. The right goal is *the attacker
-must not get an order-of-magnitude shortcut*:
+[protocol spec](docs/port-protocol.zh.md) (Chinese)
 
-| Algorithm | Max attacker speedup |
-|---|---|
-| SHA-256 (what [Anubis](https://github.com/TecharoHQ/anubis) uses today) | **~1,000,000×** (ASIC) |
-| **NarrowNet @ 64 MB** | **~4.5×** (GPU) |
+Moves the scarce resource off FLOPS entirely. Each attempt requires **K = 64 sequential network
+round-trips**, where the next peer to query is determined by the *signature* of the previous
+response — so nothing can be prefetched, pipelined, or parallelized.
 
-Dropping the attacker's edge from six orders of magnitude to less than one is a ~200,000×
-improvement in defense quality — even though the CPU does not "win". **That is the only claim
-this project makes for the browser case.**
+```
+for i in 1..64:
+    state ← memory_step(state, 4 MB scratchpad)   # ~10 ms, cache-contended
+    peer  ← active_set[H(state) mod N]            # unpredictable until now
+    resp  ← peer.request(state)                   # ~20 ms RTT, unavoidable
+    state ← H(state ‖ resp.sig)                   # feeds the next peer choice
+```
 
-## Status — what is NOT verified
+Latency becomes ~67% of the critical path: a GPU that reduced local compute to zero would gain
+only a third, while 64 serial round-trips leave every streaming multiprocessor idle. The optimal
+unit becomes a well-connected **1-core / 1 GB VPS** — you scale by adding cheap globally
+distributed instances, not cores. Bandwidth is ~27 GB/month.
 
-1. **No real GPU measurement.** The 420 ns/step GPU figure is an *estimate*. This project just
-   demonstrated that estimates can be wrong by 15×, so treat every CPU-vs-GPU number here as
-   provisional until a CUDA implementation exists. **This is the single largest gap.**
-2. No hand-written C/AVX-512 implementation (test machine lacks AVX-512).
-3. No WASM build or real mobile measurement.
-4. No formal argument that no algebraic shortcut exists.
-5. No third-party cryptographic review.
+Its per-instance quota mechanism has a **known serious gap** (§8.1 of the spec): with a large
+active set, rate-limit signal per responder is too thin to detect a multiplexer.
+
+---
+
+### SAT-PoUW — where the work is actually useful
+
+[design doc](docs/sat-pouw.zh.md) (Chinese)
+
+CDCL SAT solvers are the textbook irregular workload — branch-dense, pointer-chasing through
+watched literals, strongly serial through conflict-driven learning. No manufacturing required.
+
+It also has the best verification asymmetry available anywhere in this repo: solving is
+NP-complete, **checking an assignment is O(n)**.
+
+Two tiers keep utility from touching consensus safety:
+
+- **Consensus** — synthetic 3SAT instances derived deterministically from the block header.
+  Tunable difficulty, unpredictable, infinite supply, no external issuer.
+- **Utility** — a bounty marketplace for real user-submitted CNF, sharing the same solver
+  infrastructure. If it stalls or is captured, the chain is unaffected.
+
+Difficulty is decoupled from SAT hardness (heavy-tailed near the phase transition) by targeting
+`H(instance‖assignment)` instead, letting the law of large numbers stabilize block time.
+
+**Its central risk differs in kind.** With hash-based PoW everyone runs the same optimal algorithm
+and competes on hardware. With SAT, a privately-held 10×-faster solver is a 10× mining advantage —
+and a secret algorithm is *less* accessible than an ASIC, which you can at least buy. Whether that
+is a fatal centralization vector or the most valuable property of the design (a standing economic
+incentive for solver research) is an open judgment call, stated rather than buried.
+
+---
+
+## The shared lever: cache contention
+
+`bench/contention.py` — measures why **N single-core machines beat one N-core machine**.
+
+With a per-instance working set of ≥2 MB, threads evict each other from shared L3:
+
+| Working set / thread | 4 threads | 12 threads |
+|---|---|---|
+| 256 KB | 95% ✅ | 41% |
+| **2 MB** | **68%** ⚠️ | 30% |
+| **16 MB** | **62%** ⚠️ | 28% |
+
+*(scaling efficiency = total throughput ÷ N × single-thread)*
+
+The clean signal is the 1→4 range, where all threads land on this machine's 4 P-cores:
+**≥2 MB working set costs 32–38% at only 4 threads.** The 12-thread column is inflated by
+E-core scheduling and laptop thermal throttling and should be re-measured on homogeneous silicon.
+
+This independently lands on the same **2–4 MB sweet spot** RandomX uses — large enough to fill one
+core's L2, small enough that a 32-core server with 32 MB of L3 thrashes at 8+ threads.
+
+## Measurement methodology (learned the hard way)
+
+1. **Pin to a P-core.** Hybrid CPUs migrate threads; E-cores are 2–3× slower. Unpinned, the same
+   function measured **183 ns and 527 ns** on consecutive runs. `SetThreadAffinityMask` via ctypes
+   **silently returns 0** unless you declare `argtypes`/`restype`.
+2. **Take the minimum, not the mean.** Standard for latency; filters scheduler and interrupt noise.
+3. **Measure the clock, don't trust the spec.** Derive it from a known-latency dependency chain.
+   Contradictory readings (2.82 and 5.50 GHz on a 4.5 GHz part) are the signal that a thread moved.
+4. **`fastmath=False` is mandatory.** PoW requires bit-exact determinism; letting the compiler
+   reassociate floating point changes rounding.
+
+## Also here: a Wesolowski VDF
+
+`vdf/` — a complementary primitive, not a competing design. Where the three above are probabilistic
+PoW (verification means recomputing), a VDF *proves elapsed sequential time* and verifies in
+milliseconds — the right tool for time-locks, sealed-bid auctions, and randomness beacons.
+
+Measured (T = 10⁶ sequential squarings, 1024-bit modulus):
+
+| | naive | checkpointed + parallel |
+|---|---|---|
+| eval (strictly serial) | 2101 ms | 2101 ms |
+| prove | 11827 ms | **3823 ms** (3.1×) |
+| verify | **4.83 ms** | 4.83 ms |
+
+`eval` cannot be parallelized by anyone — that is the point. `prove` *can* be, and v2 exploits it.
+
+## Status
+
+| Design | Killing experiment | Done? |
+|---|---|---|
+| NarrowNet | **Real CUDA measurement** — the 420 ns/step GPU figure is still an estimate | ❌ needs a discrete GPU |
+| PoRT | Network simulator: does latency actually dominate? | ❌ |
+| SAT-PoUW | **Multi-thread scaling of MiniSat / CaDiCaL** — if near-linear, the design dies | ❌ cheapest and most decisive |
+
+Every CPU-vs-GPU number in this repo rests on an *estimated* GPU cost. This project has already
+demonstrated that estimates can be wrong by 15×. Treat them as provisional.
 
 ## Usage
 
 ```bash
 pip install numpy numba
-python src/narrownet_v3.py      # main implementation + self-calibration
-python bench/bench_v2.py        # step-cost benchmark
+python src/narrownet_v3.py    # implementation + self-calibration
+python bench/bench_v2.py      # step-cost benchmark (P-core pinned)
+python bench/contention.py    # multi-thread cache contention
 ```
-
-`src/narrownet_v3.py` is the current implementation. `v1`/`v2` are kept to document the
-CoW vulnerability and its fix.
-
-## Layout
-
-```
-src/narrownet_v3.py   Current implementation (power-of-2 pool, residual, cheap integer fill)
-src/narrownet_v2.py   Introduced per-nonce pools — fixes the copy-on-write bypass
-src/narrownet_v1.py   Original design (CoW-vulnerable, kept for reference)
-bench/                Native calibration + attack-economics model
-docs/                 Full attack-surface analysis (Chinese)
-vdf/                  Wesolowski VDF — a separate, complementary primitive (see below)
-```
-
-## Also here: PoRT — a second, network-bound design
-
-`docs/port-protocol.zh.md` (Chinese) specifies **Proof of Round Trips**, a different attack on
-the same problem: instead of making the *computation* CPU-favoring, it moves the scarce resource
-from FLOPS to **network position** entirely.
-
-Each mining attempt requires K=64 sequential, unpredictable network round-trips — the next peer
-to query is determined by the *signature* of the previous response, so nothing can be prefetched
-or parallelized. Network latency becomes ~67% of the critical path, which makes GPUs useless and
-makes a well-connected **1-core / 1 GB VPS the optimal unit** — you scale by adding cheap
-globally-distributed instances, not by adding cores.
-
-It reuses the cache-contention lever measured here (`bench/contention.py`): with a ≥2 MB
-per-instance working set, **4 threads on one machine already lose 32–38% efficiency** to shared-L3
-thrashing, so N separate single-core machines beat one N-core machine.
-
-Status: only that one lever has measurements. Two others (per-instance quota, latency dominance)
-are unvalidated, and a known serious gap in the quota mechanism is documented rather than hidden.
-
-## Also here: SAT-PoUW — where the work is actually useful
-
-`docs/sat-pouw.zh.md` (Chinese) takes the opposite approach to both designs above. NarrowNet and
-PoRT go to some length to *manufacture* GPU-hostility. **SAT solving already is that shape** —
-CDCL solvers are the textbook irregular workload: branch-dense, pointer-chasing through watched
-literals, strongly serial through conflict-driven learning. Two decades of GPU SAT research has
-largely failed, and that failure is the security property.
-
-It also has the best verification asymmetry available: solving is NP-complete, **checking an
-assignment is O(n)**. Compare with NarrowNet (full recomputation) and PoRT (~640 ms).
-
-Two-tier structure keeps utility from compromising consensus:
-
-- **Consensus tier** — synthetic 3SAT instances derived deterministically from the block header.
-  Guarantees tunable difficulty, unpredictability, and infinite supply with no external issuer.
-- **Utility tier** — a marketplace of real user-submitted CNF instances with bounties, solved by
-  the same solver infrastructure. If it stalls or is manipulated, the chain is unaffected.
-
-Difficulty is decoupled from SAT hardness (which is heavy-tailed near the phase transition) by
-putting the target on `H(instance‖assignment)` instead — the law of large numbers then stabilizes
-block time.
-
-**Its central risk is different in kind from the other two:** with hash-based PoW everyone runs the
-same optimal algorithm and competes on hardware. With SAT, a privately-held 10×-faster solver is a
-10× mining advantage — and a secret algorithm is *less* accessible than an ASIC, which you can at
-least buy. Whether that is a fatal centralization vector or the most valuable thing about the
-design (a standing economic incentive for solver research) is a judgment call, stated openly in
-the doc rather than buried.
-
-Status: the assumption that would kill it — that SAT solvers show the same multi-thread cache
-contention measured in `bench/contention.py` — **has not been tested yet.**
-
-## Also here: a Wesolowski VDF
-
-`vdf/` contains an unrelated but complementary primitive: repeated squaring in an RSA group
-with O(1) verification. Where NarrowNet is a probabilistic PoW (verification means recomputing),
-a VDF *proves elapsed sequential time* and verifies in milliseconds — the right tool for
-time-locks, sealed-bid auctions, and randomness beacons.
-
-Measured (T = 10⁶ sequential squarings, 1024-bit modulus):
-
-| | v1 (naive) | v2 (checkpointed, parallel) |
-|---|---|---|
-| eval (strictly serial) | 2101 ms | 2101 ms |
-| prove | 11827 ms | **3823 ms** (3.1× faster) |
-| verify | **4.83 ms** | 4.83 ms |
-
-`eval` cannot be parallelized by anyone — that is the point. `prove` *can* be, and v2 exploits it.
 
 ## Prior work
 
-| Project | Relation |
+| | Relation |
 |---|---|
-| [RandomX](https://github.com/tevador/RandomX) | Same goal (CPU-favoring PoW), different method — random x86 code generation. Its 2 GB dataset threshold is independently confirmed here. |
-| [Argon2](https://github.com/P-H-C/phc-winner-argon2) | Sequential memory-hard filling; the pool-fill phase borrows this idea. |
-| [Coin.AI](https://arxiv.org/pdf/1903.09800) | PoUW via DNN *training*; NarrowNet uses inference *shape* without useful output. |
-| [Anubis](https://github.com/TecharoHQ/anubis) | The target application — currently SHA-256-based, hence GPU/ASIC-bypassable. |
-
-No existing implementation of "neural-inference-shaped anti-GPU PoW" was found in two rounds of
-search. Individual ingredients (memory-hardness, pointer chasing, serial chains, AI+PoW) are all
-prior art; **the combination appears to be unoccupied.** That is not a guarantee of novelty.
+| [RandomX](https://github.com/tevador/RandomX) | Same goal, different method. Its 2 GB dataset and 2 MB scratchpad thresholds are both independently reproduced here. |
+| [Argon2](https://github.com/P-H-C/phc-winner-argon2) | Sequential memory-hard filling; PoRT's pool-fill borrows the idea. |
+| [Primecoin](https://github.com/primecoin/primecoin) | One of the few PoUW schemes that actually worked; narrow utility. |
+| [Coin.AI](https://arxiv.org/pdf/1903.09800) | PoUW via DNN *training* — hard to verify cheaply, and GPU-favoring. |
+| [Anubis](https://github.com/TecharoHQ/anubis) | The anti-scraper application these could serve; currently SHA-256, hence ASIC-bypassable. |
+| [drand](https://github.com/drand/drand) | Architectural reference for PoRT: featherweight nodes, tiny bandwidth, latency and liveness decide everything. |
+| **Qubic** | ❌ **Not a usable reference despite appearances.** Its computors need **1 TB RAM on bare-metal UEFI** (no VPS possible), it is Anti-Military-Licensed, and its mining moved to GPUs. |
 
 ## License
 
@@ -221,92 +217,54 @@ MIT
 
 # 中文说明
 
-一个**计算过程本身就是神经网络前向传播**的工作量证明算法，但把每一个维度都调到 GPU 的反面：
-**宽度 8、深度百万级、FP64、以及每个 nonce 独占的可变权重池——后者把 GPU 的并行度锁死为 `显存 ÷ 池子大小`。**
+三个设计，围绕同一个问题：**共识计算能不能做到让 CPU 和小机器胜过 GPU——如果能，代价是什么？**
 
-> **本仓库如实报告实测数据，包括那些推翻了自己早期设计宣称的数据。**
-> 一个偏差 15 倍的成本模型被完整记录，连同它导致的错误结论。
+这是一个实验室，不是产品。每个设计都推进到能识别出「哪个实验能一票否决它」的程度，并把那个实验明确写出来。其中一个已经开火了：这里有个成本模型**错了 15 倍**，它推翻的结论被完整记录，而不是悄悄改掉。
 
-## 核心思路
+## 三个设计对比
 
-真实 AI 计算恰恰是 GPU 的主场。所以把每个维度反过来：
+| | **NarrowNet** | **PoRT** | **SAT-PoUW** |
+|---|---|---|---|
+| **稀缺资源** | 内存容量 | 网络位置 | 求解器质量 |
+| **反 GPU 手段** | 人为构造（FP64/串行链/独占池） | 网络延迟主导关键路径 | **问题天生如此** |
+| **验证成本** | 完整重算 | ~640 ms | ✅ **O(n)，代入检查** |
+| **工作有用吗** | ❌ | ❌ | ✅ **有真实产出** |
+| **实测了吗** | ✅ 已标定 | ❌ | ❌ |
+| **什么能否定它** | 池子 <1GB 则 GPU 赢 | 按 IP 限流信号太薄 | 求解器多核线性扩展 |
+| **核心风险** | 每实例需 ≥1GB | 批发 IP（/24）攻击 | **秘密求解器 = 挖矿优势** |
 
-| 维度 | 常规 AI（GPU 主场） | NarrowNet（CPU 主场） |
+**三者的演进方向才是最有意思的部分**：NarrowNet 和 PoRT 费很大力气去**制造**"GPU 不适感"；而 SAT 求解**天生就是那个形状**——二十年 GPU SAT 研究的失败，本身就是安全性证明。
+
+## 共用杠杆：缓存争用
+
+`bench/contention.py` 量化了**为什么 N 台单核机器胜过一台 N 核机器**：
+
+| 每线程工作集 | 4 线程效率 | 12 线程效率 |
 |---|---|---|
-| 宽度 | 4096+ | **8**（一个 AVX-512 FP64 向量） |
-| 深度 | 几十层 | **10⁵–10⁶ 层** |
-| batch | 几千 | **1** |
-| 精度 | FP16 / BF16 | **FP64 严格 IEEE** |
-| 权重 | 常驻显存反复复用 | **每层从可变池中取，位置由上一层激活决定** |
+| 256 KB | 95% ✅ | 41% |
+| **2 MB** | **68%** ⚠️ | 30% |
+| **16 MB** | **62%** ⚠️ | 28% |
 
-它仍然是货真价实的神经网络——矩阵向量乘、非线性激活、残差连接、归一化——只是形状是任何训练出来的模型都不会用的。
+干净信号在 1→4 区间（都落在这台机器的 4 个 P 核上）：**工作集 ≥2MB 时，仅 4 线程就损失 32–38%。** 12 线程那列被大小核调度和笔记本温度墙放大了，需在同构服务器上重测。
 
-## 防线（以及哪些是纸老虎）
+这独立落在了 RandomX 采用的 **2–4 MB 甜点**上——大到能塞满单核 L2，小到让 32 核服务器（32MB L3）在 8 线程以上就开始踩踏。
 
-| 防线 | 挡什么 | 强度 |
+## 标定方法学（踩坑换来的）
+
+1. **必须绑 P 核** —— 混合架构会迁移线程，E 核慢 2–3 倍。未绑核时同一函数连续测出 **183 ns 和 527 ns**。`SetThreadAffinityMask` 经 ctypes 调用**必须声明 argtypes/restype**，否则静默返回 0
+2. **取最小值不取平均** —— 测延迟的标准做法
+3. **频率要实测，别信标称** —— 用已知延迟的依赖链反推；矛盾读数（4.5GHz 的芯片测出 2.82 和 5.50）就是线程被迁移的信号
+4. **`fastmath=False` 是强制的** —— PoW 需要逐位确定性，编译器重排浮点会改变舍入
+
+## 当前状态
+
+| 设计 | 一票否决实验 | 做了吗 |
 |---|---|---|
-| **每链独占内存池** | GPU 并行度锁死为 `显存 ÷ 池子`，与核心数无关 | ⭐⭐⭐⭐⭐ |
-| **每 nonce 独立池（CoW 免疫）** | 堵住写时复制对上一条的绕过 | ⭐⭐⭐⭐⭐ |
-| **FP64 除法**（每步 8 次） | 消费级 GPU 的 FP64 是 1/64 速率，除法惩罚在此之上再叠加 | ⭐⭐⭐⭐ |
-| **FP64 严格 IEEE** | 消费级 GPU 的硅片级阉割 | ⭐⭐⭐⭐ |
-| **串行依赖链** | 单链内部无法并行 | ⭐⭐⭐⭐ |
-| **指针追逐** | 地址依赖上一层激活，无法预取、无法合并访存 | ⭐⭐⭐⭐ |
-| ~~窄宽度填不满 warp~~ | ❌ **在「一线程一 nonce」下失效** | — |
-| ~~kernel launch 开销~~ | ❌ **在 megakernel 下失效** | — |
+| NarrowNet | **真实 CUDA 实测** —— 420 ns/步仍是估算 | ❌ 需要有独显的机器 |
+| PoRT | 网络模拟器：延迟是否真能主导 | ❌ |
+| SAT-PoUW | **MiniSat / CaDiCaL 的多线程扩展效率** —— 若接近线性则设计死亡 | ❌ 最便宜也最致命 |
 
-最后两条在早期设计笔记里宣称过，现已**撤回**——理性的攻击者会让每个 GPU 线程跑一条独立的链，这两条同时失效。
-
-## ⚠️ 最重要的结论：池子大小决定成败
-
-用**实测**的 CPU 成本（而非那个错了 15 倍的模型）重算：
-
-| 池子 | GPU 可并行 | CPU/GPU 吞吐 | 单位成本比 | 判定 |
-|---|---|---|---|---|
-| 16 MB | 2,048 | 0.09× | 0.18× | ❌ GPU 完胜 |
-| 64 MB | 512 | 0.22× | 0.45× | ❌ GPU 胜 |
-| 256 MB | 128 | 0.78× | 1.56× | ~ 打平 |
-| **1 GB** | **32** | **2.93×** | **5.85×** | ✅ CPU 胜 |
-| **2 GB** | **16** | **5.43×** | **10.86×** | ✅ CPU 完胜 |
-
-**必须 ≥1 GB 才有决定性的 CPU 优势。** 这独立复现了门罗币 RandomX 采用 2 GB 数据集的理由——那个参数不是随便取的，而是内存杠杆真正生效的门槛。
-
-### 对浏览器场景（反爬虫）意味着什么
-
-浏览器分配不了 1 GB，所以 **NarrowNet 在浏览器里拿不到 CPU 对 GPU 的优势**。但"CPU 赢 GPU"本来就不是反爬的正确目标，正确目标是**攻击者不能获得数量级的加速捷径**：
-
-| 算法 | 攻击者最大加速 |
-|---|---|
-| SHA-256（Anubis 现在用的） | **~1,000,000×**（ASIC） |
-| **NarrowNet @ 64 MB** | **~4.5×**（GPU） |
-
-把攻击者的优势从 6 个数量级压到不足 1 个——防御质量提升约 20 万倍，**即使 CPU 并没有"赢"**。这是本项目对浏览器场景唯一的宣称，不夸大。
-
-## 尚未验证（最大的坑）
-
-1. **没有真实 GPU 实测。** 那个 420 ns/步是**估算**。本项目刚刚亲手证明了估算能错 15 倍，所以在有 CUDA 实现之前，所有 CPU-vs-GPU 数字都应视为暂定。**这是当前最大的缺口。**
-2. 没有手写 C/AVX-512 实现（测试机无 AVX-512）
-3. 没有 WASM 构建和真机测试
-4. 没有"不存在代数捷径"的形式化论证
-5. 没有第三方密码学审计
-
-## 运行
-
-```bash
-pip install numpy numba
-python src/narrownet_v3.py      # 主实现 + 自标定
-python bench/bench_v2.py        # 每步成本基准测试
-```
-
-## 标定方法学（踩过的坑）
-
-1. **混合架构必须绑核** —— Intel Core Ultra 是 P 核 + E 核，Windows 会迁移线程，E 核慢 2–3 倍。未绑核时同一函数测出 183 和 527 ns 两个值。`SetThreadAffinityMask` 经 ctypes 调用**必须声明 argtypes/restype**，否则静默失败。
-2. **取最小值不取平均** —— 测延迟的标准做法。
-3. **频率要实测** —— 用已知延迟的依赖链反推；矛盾的读数是线程被迁移的信号。
-4. **`fastmath=False` 是强制的** —— PoW 要求逐位确定性，编译器重排浮点会改变舍入。
-
-## 关于原创性
-
-两轮检索没有找到"以神经网络推理形态构建的反 GPU PoW"的现成实现。但单个要素（内存硬、指针追逐、串行链、AI+PoW）**都是已有工作**，新的只是这个组合。**这不构成原创性保证。**
+**本仓库所有 CPU-vs-GPU 数字都建立在一个「估算的」GPU 成本上。本项目已经证明估算能错 15 倍。请视为暂定。**
 
 ## 许可
 
