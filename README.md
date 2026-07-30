@@ -149,6 +149,38 @@ thrashing, so N separate single-core machines beat one N-core machine.
 Status: only that one lever has measurements. Two others (per-instance quota, latency dominance)
 are unvalidated, and a known serious gap in the quota mechanism is documented rather than hidden.
 
+## Also here: SAT-PoUW — where the work is actually useful
+
+`docs/sat-pouw.zh.md` (Chinese) takes the opposite approach to both designs above. NarrowNet and
+PoRT go to some length to *manufacture* GPU-hostility. **SAT solving already is that shape** —
+CDCL solvers are the textbook irregular workload: branch-dense, pointer-chasing through watched
+literals, strongly serial through conflict-driven learning. Two decades of GPU SAT research has
+largely failed, and that failure is the security property.
+
+It also has the best verification asymmetry available: solving is NP-complete, **checking an
+assignment is O(n)**. Compare with NarrowNet (full recomputation) and PoRT (~640 ms).
+
+Two-tier structure keeps utility from compromising consensus:
+
+- **Consensus tier** — synthetic 3SAT instances derived deterministically from the block header.
+  Guarantees tunable difficulty, unpredictability, and infinite supply with no external issuer.
+- **Utility tier** — a marketplace of real user-submitted CNF instances with bounties, solved by
+  the same solver infrastructure. If it stalls or is manipulated, the chain is unaffected.
+
+Difficulty is decoupled from SAT hardness (which is heavy-tailed near the phase transition) by
+putting the target on `H(instance‖assignment)` instead — the law of large numbers then stabilizes
+block time.
+
+**Its central risk is different in kind from the other two:** with hash-based PoW everyone runs the
+same optimal algorithm and competes on hardware. With SAT, a privately-held 10×-faster solver is a
+10× mining advantage — and a secret algorithm is *less* accessible than an ASIC, which you can at
+least buy. Whether that is a fatal centralization vector or the most valuable thing about the
+design (a standing economic incentive for solver research) is a judgment call, stated openly in
+the doc rather than buried.
+
+Status: the assumption that would kill it — that SAT solvers show the same multi-thread cache
+contention measured in `bench/contention.py` — **has not been tested yet.**
+
 ## Also here: a Wesolowski VDF
 
 `vdf/` contains an unrelated but complementary primitive: repeated squaring in an RSA group
