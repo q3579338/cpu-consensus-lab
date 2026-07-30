@@ -130,6 +130,25 @@ docs/                 Full attack-surface analysis (Chinese)
 vdf/                  Wesolowski VDF — a separate, complementary primitive (see below)
 ```
 
+## Also here: PoRT — a second, network-bound design
+
+`docs/port-protocol.zh.md` (Chinese) specifies **Proof of Round Trips**, a different attack on
+the same problem: instead of making the *computation* CPU-favoring, it moves the scarce resource
+from FLOPS to **network position** entirely.
+
+Each mining attempt requires K=64 sequential, unpredictable network round-trips — the next peer
+to query is determined by the *signature* of the previous response, so nothing can be prefetched
+or parallelized. Network latency becomes ~67% of the critical path, which makes GPUs useless and
+makes a well-connected **1-core / 1 GB VPS the optimal unit** — you scale by adding cheap
+globally-distributed instances, not by adding cores.
+
+It reuses the cache-contention lever measured here (`bench/contention.py`): with a ≥2 MB
+per-instance working set, **4 threads on one machine already lose 32–38% efficiency** to shared-L3
+thrashing, so N separate single-core machines beat one N-core machine.
+
+Status: only that one lever has measurements. Two others (per-instance quota, latency dominance)
+are unvalidated, and a known serious gap in the quota mechanism is documented rather than hidden.
+
 ## Also here: a Wesolowski VDF
 
 `vdf/` contains an unrelated but complementary primitive: repeated squaring in an RSA group
