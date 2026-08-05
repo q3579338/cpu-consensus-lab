@@ -1,0 +1,32 @@
+[
+  {
+    "threads": 1,
+    "per_worker_s": 0.0883099000020593,
+    "efficiency": 1.0
+  },
+  {
+    "threads": 2,
+    "per_worker_s": 0.08889455000098678,
+    "efficiency": 0.9934231063780513
+  },
+  {
+    "threads": 4,
+    "per_worker_s": 0.08995940000022529,
+    "efficiency": 0.981663950647049
+  },
+  {
+    "threads": 8,
+    "per_worker_s": 0.09078709999812418,
+    "efficiency": 0.9727141852078537
+  },
+  {
+    "threads": 16,
+    "per_worker_s": 0.09169284999916272,
+    "efficiency": 0.9631056293142343
+  },
+  {
+    "threads": 32,
+    "per_worker_s": 0.09347035000064352,
+    "efficiency": 0.9447905137987747
+  }
+]

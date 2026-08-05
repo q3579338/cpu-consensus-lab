@@ -20,9 +20,14 @@ edited out.
 | **Anti-GPU mechanism** | Manufactured (FP64, serial chain, per-nonce pool) | Network latency dominates critical path | **Inherent to the problem** |
 | **Verification cost** | Full recomputation | ~640 ms | ✅ **O(n) — check the assignment** |
 | **Is the work useful?** | No | No | ✅ **Yes** |
-| **Measured?** | ✅ Calibrated | ❌ No | ❌ No |
+| **Measured?** | ✅ Calibrated | ❌ No | ✅ **Measured — see below** |
 | **What would kill it** | Pool < 1 GB → GPU wins | Per-IP quota signal too thin | Solvers scale linearly across cores |
 | **Central risk** | Needs ≥1 GB per instance | IP wholesale (/24) attack | **Secret solver = mining advantage** |
+
+> **Update (2026-08-05): SAT-PoUW's killing experiment has fired.** Measured on a 16-core
+> Ryzen 9 7950X, CDCL solving yields a small-machine advantage of only **1.32×**, against
+> **3.03×** for NarrowNet's manufactured contention on the same machine. Details and the two
+> self-corrections it took to get there: **[results-7950x.zh.md](docs/results-7950x.zh.md)**.
 
 The trajectory across the three is the interesting part: NarrowNet and PoRT go to considerable
 length to *manufacture* GPU-hostility. SAT solving simply **is** that shape — and two decades of
@@ -70,6 +75,42 @@ fixed in v2 (measured: 0 / 2,097,152 shared entries between nonces).
 An earlier version of this README claimed a 2.8× CPU advantage at 64 MB. That was built on the
 15×-wrong cost model; the real figure is GPU winning by 4.5×. **A pool of ≥1 GB is required** —
 independently reproducing the rationale behind Monero RandomX's 2 GB dataset.
+
+#### Measured, finally — RTX 4090 vs Ryzen 9 7950X, same machine
+
+`bench/narrownet_cuda.py`. The table above was an *estimate*; this one is not. The kernel is
+deliberately written to favour the GPU (8 activations as scalars so they stay in registers, all 64
+multiply-adds unrolled, both `tpb=1` and `tpb=32` tried and the faster kept), and the CPU side
+reuses `src/narrownet_v3.py`'s `main_chain` rather than a reimplementation.
+
+| Pool | GPU chains | CPU/GPU throughput | per dollar | per watt | |
+|---|---|---|---|---|---|
+| 2 MB | 8192 | 0.29× | 0.84× | 0.26× | ❌ GPU wins |
+| 16 MB | 1036 | 0.37× | 1.06× | 0.21× | ❌ GPU wins |
+| **64 MB** | 259 | **1.02×** | 2.98× | 0.57× | ~ tie |
+| **256 MB** | 64 | **2.81×** | 8.19× | 1.31× | ✅ |
+| **1 GB** | 16 | **6.38×** | 18.57× | 2.76× | ✅ |
+
+**The estimate was wrong a second time — now in the opposite direction.** The crossover is at
+**64 MB**, not 1 GB: the corrected model predicted the GPU winning 4.5× there, and it is actually a
+dead heat. At 256 MB the CPU is already ahead by 2.81×. **The ≥1 GB requirement above is retracted;
+256 MB is enough**, which makes the design far more practical (browser instances, memory per miner).
+
+Two further results:
+
+- **Strict IEEE is load-bearing, and it is nearly free for the GPU.** Letting the compiler fuse
+  `a + b*c` into an FMA changes the result — max relative error **18.9**, i.e. a completely
+  different chain, so an FMA-using GPU miner produces *invalid* solutions. Only the
+  `dadd_rn`/`dmul_rn` variant reproduces the CPU bit-for-bit. But forcing it costs the GPU just
+  **1.09×**. H3 is a correctness constraint, not an economic moat — the design's hope that strict
+  IEEE would itself be expensive does not survive measurement.
+- **Per-watt is the weak flank.** The CPU only wins on energy above 256 MB (1.31×); at 16 MB the
+  GPU is 4.8× more efficient. Anyone paying for electricity rather than hardware sees a different
+  crossover than the per-dollar column suggests.
+
+*(1 GB row caveat: 31 GB of system RAM only allowed 6 CPU threads at that pool size, against 16 GPU
+chains in 24 GB of VRAM. The 6.38× is measured at 6 threads; extrapolating per-chain latency to all
+16 cores gives 17× as an upper bound that ignores the extra contention more threads would add.)*
 
 ---
 
@@ -125,6 +166,26 @@ and a secret algorithm is *less* accessible than an ASIC, which you can at least
 is a fatal centralization vector or the most valuable property of the design (a standing economic
 incentive for solver research) is an open judgment call, stated rather than buried.
 
+**Measured — and the killing experiment fired.** Independent Cadical processes, all solving an
+*identical* fixed instance (the phase transition is heavy-tailed, so varying the instance across
+concurrency levels measures nothing but luck — the first attempt did exactly that and produced
+garbage), on a 16-core 7950X:
+
+| @ 16 physical cores | scaling efficiency | small-machine advantage |
+|---|---|---|
+| pure compute (true baseline) | 96% | 1.04× |
+| **SAT (Cadical, 5.2 MB working set)** | **76%** | **1.32×** |
+| NarrowNet chain (4 MB) | 33% | **3.03×** |
+
+CDCL *does* contend — it loses 20 points against a register-only baseline. But 1.32× does not pay
+for itself: one 16-core machine costs far less than sixteen single-core ones. The design fails
+**quantitatively**, not qualitatively.
+
+The obvious rebuttal — "the instance was small enough to fit in cache" — was tested and does not
+hold: Cadical's peak working set at that instance is **5.18 MB**, *larger* than the 4 MB at which
+the NarrowNet chain collapses to 33% on the same machine. The difference is access pattern
+(whole-pool pointer chasing vs. CDCL's temporal locality), not working-set size.
+
 ---
 
 ## The shared lever: cache contention
@@ -145,8 +206,28 @@ The clean signal is the 1→4 range, where all threads land on this machine's 4 
 **≥2 MB working set costs 32–38% at only 4 threads.** The 12-thread column is inflated by
 E-core scheduling and laptop thermal throttling and should be re-measured on homogeneous silicon.
 
-This independently lands on the same **2–4 MB sweet spot** RandomX uses — large enough to fill one
-core's L2, small enough that a 32-core server with 32 MB of L3 thrashes at 8+ threads.
+### Re-measured on homogeneous silicon (7950X, 16C/32T, 32 MB L3 per CCD × 2)
+
+`bench/contention_7950x.py` — same `chain()` kernel byte-for-byte, so the numbers are comparable:
+
+| working set / thread | 4 | 8 | **16** | 32 |
+|---|---|---|---|---|
+| 256 KB | 97% | 90% | 75% | 44% |
+| 2 MB | 96% | 80% | 63% | 37% |
+| **4 MB** | 87% | **64%** | **33%** | 23% |
+| 16 MB | 65% | 53% | 33% | 21% |
+
+**The sweet spot moved: 4 MB here, not the 2 MB the laptop found.** 8 threads × 4 MB = 32 MB is
+exactly one CCD's L3, and that is where the cliff appears. The laptop's 2 MB was set by *its* 12 MB
+L3 across 4 P-cores; on Zen 4 the threshold scales with L3 in the same proportion.
+
+That is worth stating plainly: **this lever is a function of the target's cache topology, not a
+portable constant.** A design that hard-codes a working-set size is tuning to one generation of one
+vendor's cache hierarchy — which is a real problem for anything that wants to be a security
+assumption.
+
+This still lands near the **2–4 MB** region RandomX uses — large enough to fill one core's L2, small
+enough that a many-core server thrashes once the per-CCD L3 is oversubscribed.
 
 ## Measurement methodology (learned the hard way)
 
@@ -158,6 +239,19 @@ core's L2, small enough that a 32-core server with 32 MB of L3 thrashes at 8+ th
    Contradictory readings (2.82 and 5.50 GHz on a 4.5 GHz part) are the signal that a thread moved.
 4. **`fastmath=False` is mandatory.** PoW requires bit-exact determinism; letting the compiler
    reassociate floating point changes rounding.
+5. **Hold the work constant, not just the parameters.** Random 3SAT at the phase transition is
+   heavy-tailed: the same size and ratio varies by tens of times across seeds. Handing different
+   concurrency levels different instances measures instance luck, not scaling — calibration said
+   13.7 s and the run measured 0.32 s. Pin one instance, verify its spread is under 1.25×, and give
+   every worker that same one.
+6. **Verify that your control is actually a control.** A CPython SHA-256 loop was used as the
+   "zero working set" baseline; it allocates a fresh bytes object every iteration, and it reported
+   75% where a register-only chain reports 96%. Every conclusion drawn by comparing against it was
+   wrong by that gap.
+7. **Test the explanation that explains everything.** All-core downclocking was the natural account
+   of the 16-thread loss — until frequency was measured directly from a known-latency dependency
+   chain and came back at **98%**. An explanation that fits every number is the one most worth
+   measuring separately.
 
 ## Also here: a Wesolowski VDF
 
@@ -179,21 +273,37 @@ Measured (T = 10⁶ sequential squarings, 1024-bit modulus):
 
 | Design | Killing experiment | Done? |
 |---|---|---|
-| NarrowNet | **Real CUDA measurement** — the 420 ns/step GPU figure is still an estimate | ❌ needs a discrete GPU |
+| NarrowNet | **Real CUDA measurement** — the 420 ns/step GPU figure is still an estimate | ✅ **survived — crossover at 64 MB** |
 | PoRT | Network simulator: does latency actually dominate? | ❌ |
-| SAT-PoUW | **Multi-thread scaling of MiniSat / CaDiCaL** — if near-linear, the design dies | ❌ cheapest and most decisive |
+| SAT-PoUW | **Multi-thread scaling of MiniSat / CaDiCaL** — if near-linear, the design dies | ✅ **fired — 1.32× is not enough** |
 
-Every CPU-vs-GPU number in this repo rests on an *estimated* GPU cost. This project has already
-demonstrated that estimates can be wrong by 15×. Treat them as provisional.
+Two of the three have now been run, on a 7950X + RTX 4090. **NarrowNet survived its own killing
+experiment and got cheaper** (256 MB suffices, not 1 GB); **SAT-PoUW did not survive its own.**
+PoRT remains untested, and its known quota gap (§8.1) is still open.
+
+The repo's standing warning has now fired twice in both directions: the original cost model was
+wrong by 15× (optimistic), and its correction was wrong by ~4× (pessimistic). **Estimates here have
+never once survived measurement.** Numbers not yet marked as measured should be read accordingly.
 
 ## Usage
 
 ```bash
-pip install numpy numba
-python src/narrownet_v3.py    # implementation + self-calibration
-python bench/bench_v2.py      # step-cost benchmark (P-core pinned)
-python bench/contention.py    # multi-thread cache contention
+pip install numpy numba python-sat psutil
+
+python src/narrownet_v3.py         # implementation + self-calibration
+python bench/bench_v2.py           # step-cost benchmark (P-core pinned)
+python bench/contention.py         # cache contention (original, hybrid laptop CPU)
+
+# the 7950X round — see docs/results-7950x.zh.md
+python bench/sat_scaling_local.py  # SAT-PoUW killing experiment (fixed instance)
+python bench/fp_quick.py           # Cadical's real working set
+python bench/contention_7950x.py   # contention, re-measured on homogeneous silicon
+python bench/verify_baseline.py    # measured clocks — refutes the downclocking story
+python bench/true_baseline.py      # register-only control, same process harness
 ```
+
+Raw data: `results_7950x.json`, `contention_7950x.json`, `sat_footprint.json`,
+`freq_7950x.json`, `true_baseline_7950x.json`.
 
 ## Prior work
 
@@ -229,9 +339,28 @@ MIT
 | **反 GPU 手段** | 人为构造（FP64/串行链/独占池） | 网络延迟主导关键路径 | **问题天生如此** |
 | **验证成本** | 完整重算 | ~640 ms | ✅ **O(n)，代入检查** |
 | **工作有用吗** | ❌ | ❌ | ✅ **有真实产出** |
-| **实测了吗** | ✅ 已标定 | ❌ | ❌ |
+| **实测了吗** | ✅ 已标定 | ❌ | ✅ **已实测，见下** |
 | **什么能否定它** | 池子 <1GB 则 GPU 赢 | 按 IP 限流信号太薄 | 求解器多核线性扩展 |
 | **核心风险** | 每实例需 ≥1GB | 批发 IP（/24）攻击 | **秘密求解器 = 挖矿优势** |
+
+> **更新（2026-08-05）：SAT-PoUW 的一票否决实验已经开火。** 在 16 核 7950X 上实测，
+> CDCL 求解只能带来 **1.32×** 的小机器优势，而同一台机器上 NarrowNet 人为构造的争用
+> 能到 **3.03×**。全过程（含两次自我纠错）：**[results-7950x.zh.md](docs/results-7950x.zh.md)**
+
+### SAT-PoUW 实测结果
+
+| @ 16 物理核 | 扩展效率 | 小机器优势 |
+|---|---|---|
+| 纯计算（真基线） | 96% | 1.04× |
+| **SAT（Cadical，工作集 5.2MB）** | **76%** | **1.32×** |
+| NarrowNet 链（4MB） | 33% | **3.03×** |
+
+CDCL **确实有**争用（比纯寄存器基线低 20 个百分点），但 1.32× 换不来经济优势：
+一台 16 核机器远比 16 台单核机器便宜。**这是定量否决，不是"SAT 毫无争用"。**
+
+对该结论最强的反驳——"实例太小塞进缓存了"——已被证伪：Cadical 在该实例上的峰值工作集是
+**5.18MB**，**比 NarrowNet 崩到 33% 的 4MB 还大**。差异在访问模式（全池指针追逐
+vs CDCL 的时间局部性），不在工作集大小。
 
 **三者的演进方向才是最有意思的部分**：NarrowNet 和 PoRT 费很大力气去**制造**"GPU 不适感"；而 SAT 求解**天生就是那个形状**——二十年 GPU SAT 研究的失败，本身就是安全性证明。
 
@@ -247,7 +376,24 @@ MIT
 
 干净信号在 1→4 区间（都落在这台机器的 4 个 P 核上）：**工作集 ≥2MB 时，仅 4 线程就损失 32–38%。** 12 线程那列被大小核调度和笔记本温度墙放大了，需在同构服务器上重测。
 
-这独立落在了 RandomX 采用的 **2–4 MB 甜点**上——大到能塞满单核 L2，小到让 32 核服务器（32MB L3）在 8 线程以上就开始踩踏。
+### 同构硅复测（7950X，16C/32T，32MB L3 × 2 CCD）
+
+`bench/contention_7950x.py`——`chain()` 计算核心逐字未改，数字可直接对比：
+
+| 工作集/线程 | 4 | 8 | **16** | 32 |
+|---|---|---|---|---|
+| 256 KB | 97% | 90% | 75% | 44% |
+| 2 MB | 96% | 80% | 63% | 37% |
+| **4 MB** | 87% | **64%** | **33%** | 23% |
+| 16 MB | 65% | 53% | 33% | 21% |
+
+**甜点变了：这里是 4MB，不是笔记本上的 2MB。** 8 线程 × 4MB = 32MB 正好是单个 CCD 的 L3，
+断崖就出现在那里。笔记本的 2MB 是被它 4 个 P 核共享 12MB L3 决定的；换到 Zen4，阈值随 L3 等比例上移。
+
+这一点值得直说：**这条杠杆是目标芯片缓存拓扑的函数，不是可移植的常数。**
+把工作集大小写死的设计，等于在给某一代某一家的缓存层级做调参——对想拿它当安全假设的东西来说，这是真问题。
+
+数值仍落在 RandomX 采用的 **2–4MB** 区间附近——大到能塞满单核 L2，小到让多核服务器在单 CCD 的 L3 被超额订阅后开始踩踏。
 
 ## 标定方法学（踩坑换来的）
 
@@ -260,11 +406,57 @@ MIT
 
 | 设计 | 一票否决实验 | 做了吗 |
 |---|---|---|
-| NarrowNet | **真实 CUDA 实测** —— 420 ns/步仍是估算 | ❌ 需要有独显的机器 |
+| NarrowNet | **真实 CUDA 实测** —— 420 ns/步仍是估算 | ✅ **活下来了：拐点在 64MB** |
 | PoRT | 网络模拟器：延迟是否真能主导 | ❌ |
-| SAT-PoUW | **MiniSat / CaDiCaL 的多线程扩展效率** —— 若接近线性则设计死亡 | ❌ 最便宜也最致命 |
+| SAT-PoUW | **MiniSat / CaDiCaL 的多线程扩展效率** —— 若接近线性则设计死亡 | ✅ **已开火：1.32× 不够** |
 
-**本仓库所有 CPU-vs-GPU 数字都建立在一个「估算的」GPU 成本上。本项目已经证明估算能错 15 倍。请视为暂定。**
+三个里已经做掉两个（7950X + RTX 4090）。**NarrowNet 扛过了自己的一票否决，而且变便宜了**
+（256MB 就够，不必 1GB）；**SAT-PoUW 没扛过。** PoRT 仍未测，它已知的配额漏洞（§8.1）也还开着。
+
+本仓库那句警告已经在两个方向上各应验一次：最初的成本模型错了 15 倍（乐观），
+而它的修正版又错了约 4 倍（悲观）。**这里的估算至今没有一次经受住实测。**
+凡是还没标注「已实测」的数字，请照此对待。
+
+### NarrowNet CUDA 实测（RTX 4090 vs 7950X，同机）
+
+`bench/narrownet_cuda.py`。kernel 刻意写得偏袒 GPU（8 个激活值用标量保证进寄存器、
+64 次乘加全展开、tpb=1 和 32 都跑取快的），CPU 侧直接复用 `src/narrownet_v3.py` 的
+`main_chain` 不另写。
+
+| 池子 | GPU链数 | CPU/GPU 吞吐 | 每美元 | 每瓦 | |
+|---|---|---|---|---|---|
+| 2 MB | 8192 | 0.29× | 0.84× | 0.26× | ❌ GPU 赢 |
+| 16 MB | 1036 | 0.37× | 1.06× | 0.21× | ❌ GPU 赢 |
+| **64 MB** | 259 | **1.02×** | 2.98× | 0.57× | ~ 打平 |
+| **256 MB** | 64 | **2.81×** | 8.19× | 1.31× | ✅ |
+| **1 GB** | 16 | **6.38×** | 18.57× | 2.76× | ✅ |
+
+**估算第二次出错，这回是反方向。** 拐点在 **64MB** 而不是 1GB：修正后的模型预测那里
+GPU 赢 4.5×，实测是打平。256MB 时 CPU 已经赢 2.81×。**上面「必须 ≥1GB」的结论予以撤回，
+256MB 就够** —— 这让设计实用得多（浏览器实例、每矿工内存占用）。
+
+另外两个结果：
+
+- **严格 IEEE 是承重的，但对 GPU 几乎免费。** 让编译器把 `a + b*c` 合并成 FMA 会改变结果，
+  最大相对误差 **18.9**，即完全不同的链 —— 用 FMA 的 GPU 矿工产出的是**无效解**。
+  只有 `dadd_rn`/`dmul_rn` 变体能与 CPU 逐位相同。但强制它只让 GPU 慢 **1.09×**。
+  H3 是正确性约束，不是经济护城河 —— 设计原本指望"严格 IEEE 本身很贵"，实测不成立。
+- **每瓦是软肋。** CPU 只在 256MB 以上才赢能效（1.31×）；16MB 时 GPU 能效是 CPU 的 4.8 倍。
+  付电费而不是付硬件钱的人，看到的拐点和「每美元」那列不是一回事。
+
+*(1GB 那行注意：31GB 系统内存只够开 6 个 CPU 线程，对上 24GB 显存里的 16 条 GPU 链。
+6.38× 是 6 线程实测；按每链延迟外推到满 16 核得 17×，那是忽略了更多线程额外争用的上界。)*
+
+## 方法学补充（本轮踩坑换来的）
+
+5. **要固定的是"工作量"，不只是参数。** 相变点随机 3SAT 是重尾分布：同规模同比例，换个种子差几十倍。
+   给不同并发度喂不同实例，测到的是实例运气不是扩展性——标定说 13.7s，实测 0.32s。
+   正确做法：固定一个实例，先验证它重复测量的离散度 < 1.25×，再让所有 worker 都解它。
+6. **必须验证你的"对照组"真的是对照。** 曾用 CPython 的 SHA-256 循环当"零工作集"基线，
+   但它每次迭代都分配新 bytes 对象；它测出 75%，而纯寄存器依赖链测出 96%。
+   所有靠它做的比较都错了这个差值。
+7. **越是"什么都能解释"的解释，越要单独测。** 全核降频本来能自然解释 16 线程的损失——
+   直到用已知延迟的依赖链直接实测频率，得到 **98%**。
 
 ## 许可
 

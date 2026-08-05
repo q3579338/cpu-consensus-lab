@@ -1,0 +1,183 @@
+{
+  "cpu": "AMD Ryzen 9 7950X",
+  "logical_cores": 32,
+  "depth": 120000,
+  "results": {
+    "256 KB (\u8d34\u5408 L2)": [
+      {
+        "threads": 1,
+        "ns_per_step": 59.65000000287546,
+        "throughput_Msteps": 16.14704576370125,
+        "degrade": 1.0,
+        "efficiency": 1.0
+      },
+      {
+        "threads": 2,
+        "ns_per_step": 60.873333336530784,
+        "throughput_Msteps": 30.60834077070064,
+        "degrade": 1.0205085219379104,
+        "efficiency": 0.9478000254234912
+      },
+      {
+        "threads": 4,
+        "ns_per_step": 59.37125000248974,
+        "throughput_Msteps": 62.75904448398887,
+        "degrade": 0.9953269069510094,
+        "efficiency": 0.971679981007299
+      },
+      {
+        "threads": 8,
+        "ns_per_step": 59.73802083190095,
+        "throughput_Msteps": 116.60107855746965,
+        "degrade": 1.0014756216097442,
+        "efficiency": 0.9026502453129093
+      },
+      {
+        "threads": 16,
+        "ns_per_step": 64.82114583642822,
+        "throughput_Msteps": 193.21143571420146,
+        "degrade": 1.0866914640956158,
+        "efficiency": 0.7478590764438124
+      },
+      {
+        "threads": 32,
+        "ns_per_step": 70.3684635434835,
+        "throughput_Msteps": 228.34172768096622,
+        "degrade": 1.1796892462714392,
+        "efficiency": 0.44191854624399995
+      }
+    ],
+    "2 MB (\u539f\u7248\u751c\u70b9)": [
+      {
+        "threads": 1,
+        "ns_per_step": 67.89166667052389,
+        "throughput_Msteps": 14.261266401625372,
+        "degrade": 1.0,
+        "efficiency": 1.0
+      },
+      {
+        "threads": 2,
+        "ns_per_step": 66.13124999148567,
+        "throughput_Msteps": 29.02792728277242,
+        "degrade": 0.9740702097124606,
+        "efficiency": 1.0177191304505775
+      },
+      {
+        "threads": 4,
+        "ns_per_step": 68.06520833606555,
+        "throughput_Msteps": 54.63921045690004,
+        "degrade": 1.002556155623397,
+        "efficiency": 0.9578253592309437
+      },
+      {
+        "threads": 8,
+        "ns_per_step": 73.74447916580114,
+        "throughput_Msteps": 91.69667504573529,
+        "degrade": 1.0862081133415205,
+        "efficiency": 0.8037213567099879
+      },
+      {
+        "threads": 16,
+        "ns_per_step": 84.9781770853042,
+        "throughput_Msteps": 143.92048393921365,
+        "degrade": 1.2516731618580024,
+        "efficiency": 0.6307315208119021
+      },
+      {
+        "threads": 32,
+        "ns_per_step": 101.86695312531432,
+        "throughput_Msteps": 169.6750104943082,
+        "degrade": 1.5004338252538625,
+        "efficiency": 0.37180036671517597
+      }
+    ],
+    "4 MB (8\u7ebf\u7a0b=32MB=\u5355CCD L3)": [
+      {
+        "threads": 1,
+        "ns_per_step": 76.31916666165732,
+        "throughput_Msteps": 12.787587515315742,
+        "degrade": 1.0,
+        "efficiency": 1.0
+      },
+      {
+        "threads": 2,
+        "ns_per_step": 71.33874999757002,
+        "throughput_Msteps": 26.527837648706196,
+        "degrade": 0.934742255688315,
+        "efficiency": 1.0372495053087107
+      },
+      {
+        "threads": 4,
+        "ns_per_step": 81.77104166406934,
+        "throughput_Msteps": 44.356962655686296,
+        "degrade": 1.0714352008923473,
+        "efficiency": 0.8671878609346718
+      },
+      {
+        "threads": 8,
+        "ns_per_step": 98.36520833346185,
+        "throughput_Msteps": 65.7039217005164,
+        "degrade": 1.288866383585402,
+        "efficiency": 0.6422626787678145
+      },
+      {
+        "threads": 16,
+        "ns_per_step": 179.16760416767374,
+        "throughput_Msteps": 68.18859829727691,
+        "degrade": 2.3476095456069412,
+        "efficiency": 0.3332753256605633
+      },
+      {
+        "threads": 32,
+        "ns_per_step": 274.1367447929595,
+        "throughput_Msteps": 94.13472051138721,
+        "degrade": 3.591977700808486,
+        "efficiency": 0.2300441746699722
+      }
+    ],
+    "16 MB (\u5403 L3)": [
+      {
+        "threads": 1,
+        "ns_per_step": 126.22000000798532,
+        "throughput_Msteps": 7.77589860197407,
+        "degrade": 1.0,
+        "efficiency": 1.0
+      },
+      {
+        "threads": 2,
+        "ns_per_step": 148.1808333361793,
+        "throughput_Msteps": 12.766636523565836,
+        "degrade": 1.173988538478883,
+        "efficiency": 0.8209106867934701
+      },
+      {
+        "threads": 4,
+        "ns_per_step": 183.39250000281027,
+        "throughput_Msteps": 20.121230412662573,
+        "degrade": 1.452959118928917,
+        "efficiency": 0.6469101335617464
+      },
+      {
+        "threads": 8,
+        "ns_per_step": 216.68708333208997,
+        "throughput_Msteps": 33.18790577543808,
+        "degrade": 1.716741271734917,
+        "efficiency": 0.5335059565818646
+      },
+      {
+        "threads": 16,
+        "ns_per_step": 352.7711458341779,
+        "throughput_Msteps": 40.7473747656115,
+        "degrade": 2.7948910300416716,
+        "efficiency": 0.32751339146888875
+      },
+      {
+        "threads": 32,
+        "ns_per_step": 510.5419270833522,
+        "throughput_Msteps": 53.475712416851074,
+        "degrade": 4.044857606172181,
+        "efficiency": 0.2149096970737696
+      }
+    ]
+  }
+}

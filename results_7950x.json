@@ -1,0 +1,87 @@
+{
+  "cpu": "AMD Ryzen 9 7950X",
+  "logical_cores": 32,
+  "solver": "Cadical153",
+  "n_vars": 260,
+  "seed": 2,
+  "solo_solve_s": 3.2116643999997905,
+  "ratio": 4.26,
+  "rounds": 3,
+  "method": "identical instance across all concurrency levels",
+  "sat": [
+    {
+      "threads": 1,
+      "per_worker_s": 3.1857429000010598,
+      "degrade": 1.0,
+      "efficiency": 1.0
+    },
+    {
+      "threads": 2,
+      "per_worker_s": 3.208369599999969,
+      "degrade": 1.007102487774171,
+      "efficiency": 0.9929476017978385
+    },
+    {
+      "threads": 4,
+      "per_worker_s": 3.265063349999764,
+      "degrade": 1.0248985723231707,
+      "efficiency": 0.9757063059745197
+    },
+    {
+      "threads": 8,
+      "per_worker_s": 3.456927000000178,
+      "degrade": 1.0851242892196442,
+      "efficiency": 0.9215534201332269
+    },
+    {
+      "threads": 16,
+      "per_worker_s": 4.180039150000084,
+      "degrade": 1.3121081271180715,
+      "efficiency": 0.7621323116078939
+    },
+    {
+      "threads": 32,
+      "per_worker_s": 6.185688900000059,
+      "degrade": 1.94167862698462,
+      "efficiency": 0.5150182868073158
+    }
+  ],
+  "sha256_control": [
+    {
+      "threads": 1,
+      "per_worker_s": 2.953296499999851,
+      "degrade": 1.0,
+      "efficiency": 1.0
+    },
+    {
+      "threads": 2,
+      "per_worker_s": 2.934120050000274,
+      "degrade": 0.993506764390376,
+      "efficiency": 1.006535673276073
+    },
+    {
+      "threads": 4,
+      "per_worker_s": 2.9480473000003258,
+      "degrade": 0.9982225963429253,
+      "efficiency": 1.0017805684459422
+    },
+    {
+      "threads": 8,
+      "per_worker_s": 3.1248115500002314,
+      "degrade": 1.058075797672326,
+      "efficiency": 0.9451118740263337
+    },
+    {
+      "threads": 16,
+      "per_worker_s": 3.9612677000004624,
+      "degrade": 1.341303760052762,
+      "efficiency": 0.7455432764616
+    },
+    {
+      "threads": 32,
+      "per_worker_s": 6.547721200000524,
+      "degrade": 2.217089005455718,
+      "efficiency": 0.4510418830905041
+    }
+  ]
+}

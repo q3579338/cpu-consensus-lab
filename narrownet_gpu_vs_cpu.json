@@ -1,0 +1,184 @@
+{
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "cpu": "Ryzen 9 7950X",
+  "ghz": 5.3984020737610425,
+  "econ": {
+    "cpu_name": "Ryzen 9 7950X",
+    "gpu_name": "RTX 4090",
+    "cpu_usd": 550.0,
+    "gpu_usd": 1600.0,
+    "cpu_watt": 230.0
+  },
+  "correctness": {
+    "fma": {
+      "bit_exact": false,
+      "max_rel_err": 18.853139252773442
+    },
+    "exact": {
+      "bit_exact": true,
+      "max_rel_err": 0.0
+    }
+  },
+  "rows": [
+    {
+      "pool_mb": 2,
+      "gpu_chains": 8192,
+      "cpu_threads": 16,
+      "gpu_fma": {
+        "msteps": 503.9611617737421,
+        "ns_per_step": 16255.220880846116,
+        "tpb": 32,
+        "peak_watt": 199.65,
+        "chains": 8192
+      },
+      "gpu_exact": {
+        "msteps": 558.9964751605893,
+        "ns_per_step": 14654.83301598027,
+        "tpb": 32,
+        "peak_watt": 207.75,
+        "chains": 8192
+      },
+      "cpu": {
+        "msteps": 161.6814874766879,
+        "ns_per_step": 98.95999999571359,
+        "single_msteps": 15.076816374387985,
+        "single_ns_per_step": 66.32700002228376,
+        "proj_full_cores_msteps": 161.6814874766879,
+        "ram_capped": false,
+        "hw_ceiling_chains": 15929
+      },
+      "ratio_cpu_over_gpu": 0.2892352539973348,
+      "compared_against": "gpu_exact",
+      "cpu_per_usd_over_gpu": 0.8414116479922467,
+      "cpu_per_watt_over_gpu": 0.26125488703454913
+    },
+    {
+      "pool_mb": 16,
+      "gpu_chains": 1036,
+      "cpu_threads": 16,
+      "gpu_fma": {
+        "msteps": 123.27736129194436,
+        "ns_per_step": 8403.813880689368,
+        "tpb": 32,
+        "peak_watt": 143.95,
+        "chains": 1036
+      },
+      "gpu_exact": {
+        "msteps": 124.4242916770469,
+        "ns_per_step": 8326.348384518195,
+        "tpb": 32,
+        "peak_watt": 130.63,
+        "chains": 1036
+      },
+      "cpu": {
+        "msteps": 45.438667736779436,
+        "ns_per_step": 352.12300001148833,
+        "single_msteps": 10.778301123482585,
+        "single_ns_per_step": 92.77900000597583,
+        "proj_full_cores_msteps": 45.438667736779436,
+        "ram_capped": false,
+        "hw_ceiling_chains": 1991
+      },
+      "ratio_cpu_over_gpu": 0.36519129122084215,
+      "compared_against": "gpu_exact",
+      "cpu_per_usd_over_gpu": 1.0623746653697226,
+      "cpu_per_watt_over_gpu": 0.20741277553121135
+    },
+    {
+      "pool_mb": 64,
+      "gpu_chains": 259,
+      "cpu_threads": 16,
+      "gpu_fma": {
+        "msteps": 42.05029900828986,
+        "ns_per_step": 6159.290328683284,
+        "tpb": 1,
+        "peak_watt": 126.92,
+        "chains": 259
+      },
+      "gpu_exact": {
+        "msteps": 33.39357302161683,
+        "ns_per_step": 7755.983459222535,
+        "tpb": 1,
+        "peak_watt": 127.57,
+        "chains": 259
+      },
+      "cpu": {
+        "msteps": 34.19366006559867,
+        "ns_per_step": 467.92300003289716,
+        "single_msteps": 5.482486197696509,
+        "single_ns_per_step": 182.39900000480705,
+        "proj_full_cores_msteps": 34.19366006559867,
+        "ram_capped": false,
+        "hw_ceiling_chains": 497
+      },
+      "ratio_cpu_over_gpu": 1.0239593122743684,
+      "compared_against": "gpu_exact",
+      "cpu_per_usd_over_gpu": 2.9787907266163445,
+      "cpu_per_watt_over_gpu": 0.5679412585514834
+    },
+    {
+      "pool_mb": 256,
+      "gpu_chains": 64,
+      "cpu_threads": 16,
+      "gpu_fma": {
+        "msteps": 11.863713765488288,
+        "ns_per_step": 5394.600819363739,
+        "tpb": 1,
+        "peak_watt": 105.87,
+        "chains": 64
+      },
+      "gpu_exact": {
+        "msteps": 10.641274844609503,
+        "ns_per_step": 6014.316981242164,
+        "tpb": 1,
+        "peak_watt": 106.7,
+        "chains": 64
+      },
+      "cpu": {
+        "msteps": 29.942753198574724,
+        "ns_per_step": 534.3530000027386,
+        "single_msteps": 4.74387802524294,
+        "single_ns_per_step": 210.79800000734397,
+        "proj_full_cores_msteps": 29.942753198574724,
+        "ram_capped": false,
+        "hw_ceiling_chains": 124
+      },
+      "ratio_cpu_over_gpu": 2.813831391052048,
+      "compared_against": "gpu_exact",
+      "cpu_per_usd_over_gpu": 8.185691319424139,
+      "cpu_per_watt_over_gpu": 1.3053730844576241
+    },
+    {
+      "pool_mb": 1024,
+      "gpu_chains": 16,
+      "cpu_threads": 6,
+      "gpu_fma": {
+        "msteps": 2.947894756950271,
+        "ns_per_step": 5427.602176867642,
+        "tpb": 1,
+        "peak_watt": 96.66,
+        "chains": 16
+      },
+      "gpu_exact": {
+        "msteps": 2.7084537579553545,
+        "ns_per_step": 5907.429636930039,
+        "tpb": 1,
+        "peak_watt": 99.49,
+        "chains": 16
+      },
+      "cpu": {
+        "msteps": 17.285785897839908,
+        "ns_per_step": 347.10600000835257,
+        "single_msteps": 4.389738547415456,
+        "single_ns_per_step": 227.8039999873727,
+        "proj_full_cores_msteps": 46.095429060906426,
+        "ram_capped": true,
+        "hw_ceiling_chains": 31
+      },
+      "ratio_cpu_over_gpu": 6.382160244407925,
+      "compared_against": "gpu_exact",
+      "cpu_per_usd_over_gpu": 18.56628434736851,
+      "cpu_per_watt_over_gpu": 2.760700533548454
+    }
+  ]
+}
