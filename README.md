@@ -21,8 +21,8 @@ edited out.
 | **Verification cost** | Full recomputation | ~640 ms | ✅ **O(n) — check the assignment** |
 | **Is the work useful?** | No | No | ✅ **Yes** |
 | **Measured?** | ✅ Calibrated | ❌ No | ✅ **Measured — see below** |
-| **What would kill it** | Pool < 1 GB → GPU wins | Per-IP quota signal too thin | Solvers scale linearly across cores |
-| **Central risk** | Needs ≥1 GB per instance | IP wholesale (/24) attack | **Secret solver = mining advantage** |
+| **What would kill it** | Pool < 256 MB → GPU wins | Per-IP quota signal too thin | Solvers scale linearly across cores |
+| **Central risk** | Needs ≥256 MB per instance | IP wholesale (/24) attack | **Secret solver = mining advantage** |
 
 > **Update (2026-08-05): SAT-PoUW's killing experiment has fired.** Measured on a 16-core
 > Ryzen 9 7950X, CDCL solving yields a small-machine advantage of only **1.32×**, against
@@ -91,10 +91,17 @@ reuses `src/narrownet_v3.py`'s `main_chain` rather than a reimplementation.
 | **256 MB** | 64 | **2.81×** | 8.19× | 1.31× | ✅ |
 | **1 GB** | 16 | **6.38×** | 18.57× | 2.76× | ✅ |
 
-**The estimate was wrong a second time — now in the opposite direction.** The crossover is at
-**64 MB**, not 1 GB: the corrected model predicted the GPU winning 4.5× there, and it is actually a
-dead heat. At 256 MB the CPU is already ahead by 2.81×. **The ≥1 GB requirement above is retracted;
-256 MB is enough**, which makes the design far more practical (browser instances, memory per miner).
+**The estimate was wrong a second time — now in the opposite direction.** The corrected model
+predicted the GPU winning 4.5× at 64 MB; measured, it is a dead heat. At 256 MB the CPU is ahead by
+2.81×. **The ≥1 GB requirement above is retracted; 256 MB is enough**, which makes the design far
+more practical (browser instances, memory per miner).
+
+⚠️ **The GPU was given 16.2 GB, not 24 GB** — `VRAM_BUDGET = 0.72` of the 22.5 GB free on a live
+desktop, which is what sets every chain count in the table above. A headless card gets ~1.48× more
+chains, and these are latency-bound independent chains that scale nearly linearly in chain count at
+these occupancies. Deflating by that factor: **64 MB flips to the GPU (~0.7×)** and 256 MB stays a
+CPU win (~1.9×). So the defensible claim is **256 MB, not a 64 MB crossover** — the dead heat at
+64 MB holds only against a GPU that is also driving a display.
 
 Two further results:
 
@@ -109,8 +116,11 @@ Two further results:
   crossover than the per-dollar column suggests.
 
 *(1 GB row caveat: 31 GB of system RAM only allowed 6 CPU threads at that pool size, against 16 GPU
-chains in 24 GB of VRAM. The 6.38× is measured at 6 threads; extrapolating per-chain latency to all
-16 cores gives 17× as an upper bound that ignores the extra contention more threads would add.)*
+chains in the 16.2 GB budget. The 6.38× is measured at 6 threads; extrapolating per-chain latency to
+all 16 cores gives 17× as an upper bound that ignores the extra contention more threads would add.
+Both sides are capacity-capped here — 31 GB of RAM holds 31 chains, 24 GB of VRAM holds 24 — which
+is the actual mechanism at large pools: the 4090's 16384 cores are irrelevant when only ~20 pools
+fit, so the contest reduces to per-chain latency, where the CPU is 22× faster.)*
 
 ---
 
@@ -273,7 +283,7 @@ Measured (T = 10⁶ sequential squarings, 1024-bit modulus):
 
 | Design | Killing experiment | Done? |
 |---|---|---|
-| NarrowNet | **Real CUDA measurement** — the 420 ns/step GPU figure is still an estimate | ✅ **survived — crossover at 64 MB** |
+| NarrowNet | **Real CUDA measurement** — replacing the estimated 420 ns/step | ✅ **survived — 256 MB suffices** |
 | PoRT | Network simulator: does latency actually dominate? | ❌ |
 | SAT-PoUW | **Multi-thread scaling of MiniSat / CaDiCaL** — if near-linear, the design dies | ✅ **fired — 1.32× is not enough** |
 
@@ -340,8 +350,8 @@ MIT
 | **验证成本** | 完整重算 | ~640 ms | ✅ **O(n)，代入检查** |
 | **工作有用吗** | ❌ | ❌ | ✅ **有真实产出** |
 | **实测了吗** | ✅ 已标定 | ❌ | ✅ **已实测，见下** |
-| **什么能否定它** | 池子 <1GB 则 GPU 赢 | 按 IP 限流信号太薄 | 求解器多核线性扩展 |
-| **核心风险** | 每实例需 ≥1GB | 批发 IP（/24）攻击 | **秘密求解器 = 挖矿优势** |
+| **什么能否定它** | 池子 <256MB 则 GPU 赢 | 按 IP 限流信号太薄 | 求解器多核线性扩展 |
+| **核心风险** | 每实例需 ≥256MB | 批发 IP（/24）攻击 | **秘密求解器 = 挖矿优势** |
 
 > **更新（2026-08-05）：SAT-PoUW 的一票否决实验已经开火。** 在 16 核 7950X 上实测，
 > CDCL 求解只能带来 **1.32×** 的小机器优势，而同一台机器上 NarrowNet 人为构造的争用
@@ -406,7 +416,7 @@ vs CDCL 的时间局部性），不在工作集大小。
 
 | 设计 | 一票否决实验 | 做了吗 |
 |---|---|---|
-| NarrowNet | **真实 CUDA 实测** —— 420 ns/步仍是估算 | ✅ **活下来了：拐点在 64MB** |
+| NarrowNet | **真实 CUDA 实测** —— 取代估算的 420 ns/步 | ✅ **活下来了：256MB 就够** |
 | PoRT | 网络模拟器：延迟是否真能主导 | ❌ |
 | SAT-PoUW | **MiniSat / CaDiCaL 的多线程扩展效率** —— 若接近线性则设计死亡 | ✅ **已开火：1.32× 不够** |
 
@@ -431,9 +441,15 @@ vs CDCL 的时间局部性），不在工作集大小。
 | **256 MB** | 64 | **2.81×** | 8.19× | 1.31× | ✅ |
 | **1 GB** | 16 | **6.38×** | 18.57× | 2.76× | ✅ |
 
-**估算第二次出错，这回是反方向。** 拐点在 **64MB** 而不是 1GB：修正后的模型预测那里
-GPU 赢 4.5×，实测是打平。256MB 时 CPU 已经赢 2.81×。**上面「必须 ≥1GB」的结论予以撤回，
-256MB 就够** —— 这让设计实用得多（浏览器实例、每矿工内存占用）。
+**估算第二次出错，这回是反方向。** 修正后的模型预测 64MB 时 GPU 赢 4.5×，实测是打平；
+256MB 时 CPU 已经赢 2.81×。**上面「必须 ≥1GB」的结论予以撤回，256MB 就够** —— 这让设计
+实用得多（浏览器实例、每矿工内存占用）。
+
+⚠️ **给 GPU 的是 16.2GB，不是 24GB。** 脚本里 `VRAM_BUDGET = 0.72`，只取了桌面在用时空闲的
+22.5GB 的 72% —— 上表每一个链数都是这么来的。无显示输出的卡能多拿约 **1.48 倍**链数，而这些
+是延迟受限的独立链，在当前占用率下吞吐随链数近似线性。按这个系数折算：**64MB 翻回给 GPU
+（约 0.7×）**，256MB 仍是 CPU 赢（约 1.9×）。所以站得住的说法是 **256MB，而不是「拐点在
+64MB」** —— 64MB 的打平只在对手那张卡同时还在驱动显示器时成立。
 
 另外两个结果：
 
@@ -444,8 +460,11 @@ GPU 赢 4.5×，实测是打平。256MB 时 CPU 已经赢 2.81×。**上面「�
 - **每瓦是软肋。** CPU 只在 256MB 以上才赢能效（1.31×）；16MB 时 GPU 能效是 CPU 的 4.8 倍。
   付电费而不是付硬件钱的人，看到的拐点和「每美元」那列不是一回事。
 
-*(1GB 那行注意：31GB 系统内存只够开 6 个 CPU 线程，对上 24GB 显存里的 16 条 GPU 链。
-6.38× 是 6 线程实测；按每链延迟外推到满 16 核得 17×，那是忽略了更多线程额外争用的上界。)*
+*(1GB 那行注意：31GB 系统内存只够开 6 个 CPU 线程，对上 16.2GB 预算里的 16 条 GPU 链。
+6.38× 是 6 线程实测；按每链延迟外推到满 16 核得 17×，那是忽略了更多线程额外争用的上界。
+这里**两边都被容量卡死** —— 31GB 内存装 31 条链，24GB 显存装 24 条 —— 这才是大池子时的真实
+机制：只塞得下约 20 个池子的时候，4090 的 16384 个核心毫无意义，比赛退化成单链延迟之争，
+而 CPU 在这上面快 22 倍。)*
 
 ## 方法学补充（本轮踩坑换来的）
 
