@@ -319,7 +319,9 @@ def main():
     fill_ckpt(pool, s0, s1, mask, F_SPACE, cx, cy)
     t_fill = time.perf_counter() - t0
 
-    h0 = np.frombuffer(hashlib.sha256(d).digest(), dtype=np.uint64).copy()
+    # sha512 而非 sha256:必须喂满 W=8 个 uint64,否则内核越界读(见 narrownet_v3 同处注释)
+    h0 = np.frombuffer(hashlib.sha512(d).digest(), dtype=np.uint64)[:W].copy()
+    assert h0.shape[0] == W
     h0 = (h0 >> np.uint64(11)).astype(np.float64) / 9007199254740992.0 * 2.0 - 1.0
 
     n_cck = DEPTH // C_CK

@@ -1,0 +1,81 @@
+{
+  "mode": "full",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "cpu": "Ryzen 9 7950X",
+  "ghz": 5.373431070655342,
+  "correctness": {
+    "writeback": {
+      "bit_exact": true,
+      "max_rel_err": 0.0
+    },
+    "readonly": {
+      "bit_exact": true,
+      "max_rel_err": 0.0
+    }
+  },
+  "ptx": {
+    "writeback": {
+      "st_global": 9,
+      "ld_global_nc": 0
+    },
+    "readonly": {
+      "st_global": 8,
+      "ld_global_nc": 0
+    }
+  },
+  "rows": [
+    {
+      "pool_mb": 64,
+      "pool_log2": 23,
+      "cpu_threads": 16,
+      "writeback": {
+        "gpu_chains": 259,
+        "tpb": 1,
+        "gpu_ns_per_step": 7098.911364443014,
+        "gpu_msteps": 36.484467364570534,
+        "gpu_peak_watt": 127.92,
+        "cpu_msteps": 39.467095543502346,
+        "cpu_ns_per_step": 405.40099998906953,
+        "ratio_cpu_over_gpu": 1.0817506296344672
+      },
+      "readonly": {
+        "gpu_chains": 259,
+        "tpb": 1,
+        "gpu_ns_per_step": 8846.595169722883,
+        "gpu_msteps": 29.276800286557375,
+        "gpu_peak_watt": 123.98,
+        "cpu_msteps": 41.314098176839806,
+        "cpu_ns_per_step": 387.27700000890763,
+        "ratio_cpu_over_gpu": 1.41115483155478
+      },
+      "ratio_change_readonly_over_writeback": 1.3045102936816604
+    },
+    {
+      "pool_mb": 256,
+      "pool_log2": 25,
+      "cpu_threads": 16,
+      "writeback": {
+        "gpu_chains": 64,
+        "tpb": 1,
+        "gpu_ns_per_step": 5362.531147847923,
+        "gpu_msteps": 11.934662612763432,
+        "gpu_peak_watt": 106.93,
+        "cpu_msteps": 34.47265456875371,
+        "cpu_ns_per_step": 464.1359999732231,
+        "ratio_cpu_over_gpu": 2.8884481855303727
+      },
+      "readonly": {
+        "gpu_chains": 64,
+        "tpb": 1,
+        "gpu_ns_per_step": 7717.342684507636,
+        "gpu_msteps": 8.29300999273731,
+        "gpu_peak_watt": 104.39,
+        "cpu_msteps": 30.3946171125707,
+        "cpu_ns_per_step": 526.4090000127908,
+        "ratio_cpu_over_gpu": 3.6650886878454387
+      },
+      "ratio_change_readonly_over_writeback": 1.268878114624189
+    }
+  ],
+  "median_ratio_change_readonly_over_writeback": 1.2866942041529246
+}

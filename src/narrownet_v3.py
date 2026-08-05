@@ -156,7 +156,12 @@ def narrownet(seed: bytes, nonce: int, pool_log2: int, depth: int):
     s1 = np.uint64(int.from_bytes(d[8:16], "big") | 1)
     fill_pool(pool, s0, s1, np.uint64(n - 1))
 
-    h = np.frombuffer(hashlib.sha256(d).digest(), dtype=np.uint64).copy()
+    # ⚠️ 必须给足 W 个 uint64。sha256 只有 32 字节 = 4 个 uint64,而 main_chain
+    #    按 range(W)=8 读 a[j] —— numba njit 不做边界检查,会**静默读越界内存**,
+    #    使同一 (seed,nonce) 在不同进程/机器上得出不同结果(PoW 直接失效)。
+    #    用 sha512(64 字节 = 8 个 uint64)喂满。
+    h = np.frombuffer(hashlib.sha512(d).digest(), dtype=np.uint64)[:W].copy()
+    assert h.shape[0] == W, "初始激活必须恰好 W 个元素"
     h = (h >> np.uint64(11)).astype(np.float64) / 9007199254740992.0 * 2.0 - 1.0
     a = main_chain(pool, h, depth, np.uint64((n // BLK) - 1))
     return hashlib.sha256(a.tobytes()).digest(), pool
