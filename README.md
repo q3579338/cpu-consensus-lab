@@ -21,8 +21,8 @@ edited out.
 | **Verification cost** | Full recomputation | ~640 ms | ✅ **O(n) — check the assignment** |
 | **Is the work useful?** | No | No | ✅ **Yes** |
 | **Measured?** | ✅ Calibrated | ❌ No | ✅ **Measured — see below** |
-| **What would kill it** | Pool < 256 MB → GPU wins | Per-IP quota signal too thin | Solvers scale linearly across cores |
-| **Central risk** | Needs ≥256 MB per instance | IP wholesale (/24) attack | **Secret solver = mining advantage** |
+| **What would kill it** | Pool < 1 GB → GPU wins (vs datacentre VRAM) | Per-IP quota signal too thin | Solvers scale linearly across cores |
+| **Central risk** | Needs ≥1 GB per instance | IP wholesale (/24) attack | **Secret solver = mining advantage** |
 
 > **Update (2026-08-05): SAT-PoUW's killing experiment has fired.** Measured on a 16-core
 > Ryzen 9 7950X, CDCL solving yields a small-machine advantage of only **1.32×**, against
@@ -92,16 +92,42 @@ reuses `src/narrownet_v3.py`'s `main_chain` rather than a reimplementation.
 | **1 GB** | 16 | **6.38×** | 18.57× | 2.76× | ✅ |
 
 **The estimate was wrong a second time — now in the opposite direction.** The corrected model
-predicted the GPU winning 4.5× at 64 MB; measured, it is a dead heat. At 256 MB the CPU is ahead by
-2.81×. **The ≥1 GB requirement above is retracted; 256 MB is enough**, which makes the design far
-more practical (browser instances, memory per miner).
+predicted the GPU winning 4.5× at 64 MB; measured against this card, it is a dead heat.
+
+But the measurement also shows *why*, and the why matters more than the number. **At large pools the
+GPU is not compute-bound — it is VRAM-bound.** Per-chain throughput climbs from 0.068 Msteps at 8192
+chains to 0.169 at 16 and then saturates: at 256 MB the 4090 has idle compute waiting on memory it
+does not have. Every figure in the table above is therefore a statement about *24 GB of VRAM*, not
+about GPUs.
+
+That makes the required pool size a function of which opponent you are pricing. Two corrections
+follow, in opposite directions:
 
 ⚠️ **The GPU was given 16.2 GB, not 24 GB** — `VRAM_BUDGET = 0.72` of the 22.5 GB free on a live
-desktop, which is what sets every chain count in the table above. A headless card gets ~1.48× more
-chains, and these are latency-bound independent chains that scale nearly linearly in chain count at
-these occupancies. Deflating by that factor: **64 MB flips to the GPU (~0.7×)** and 256 MB stays a
-CPU win (~1.9×). So the defensible claim is **256 MB, not a 64 MB crossover** — the dead heat at
-64 MB holds only against a GPU that is also driving a display.
+desktop, which is what sets every chain count above. A headless card gets ~1.48× more chains, and
+these are latency-bound independent chains that scale nearly linearly at these occupancies.
+Deflating by that factor, **64 MB flips to the GPU (~0.7×)** and 256 MB stays a CPU win (~1.9×). The
+dead heat at 64 MB holds only against a GPU that is also driving a display.
+
+⚠️ **And a datacentre card erases 256 MB entirely.** Extrapolating along the measured
+chains→per-chain curve (`bench/vram_sensitivity.py`, conservative toward the GPU):
+
+| 256 MB pool, opponent | chains | CPU/GPU | | 1 GB pool | CPU/GPU |
+|---|---|---|---|---|---|
+| RTX 4090 24 GB (measured) | 69 | 2.63× ✅ | | 4090 | 6.01× ✅ |
+| RTX 6000 Ada 48 GB | 138 | 1.43× ✅ | | 48 GB | 3.02× ✅ |
+| **H100 / A100 80 GB** | 230 | **0.97× ❌** | | 80 GB | 1.82× ✅ |
+| **H200 141 GB** | 406 | **0.58× ❌** | | 141 GB | 1.08× ~ |
+
+**So the ≥1 GB requirement stands, and the retraction of it drafted here has itself been withdrawn.**
+256 MB defends against consumer cards only. What measurement actually corrects is the *reason*: the
+original claim rested on the GPU winning 4.5× at 64 MB, which is false. The real reason to demand
+≥1 GB is that the adversary worth pricing holds 80–141 GB of VRAM, not 24 — and even 1 GB only
+buys 1.08× against an H200.
+
+*(This section was published claiming the opposite for several hours. The error was drawing a
+general CPU-vs-GPU conclusion from a single card, when the design's entire premise is that the
+result depends on VRAM.)*
 
 Two further results:
 
@@ -288,7 +314,9 @@ Measured (T = 10⁶ sequential squarings, 1024-bit modulus):
 | SAT-PoUW | **Multi-thread scaling of MiniSat / CaDiCaL** — if near-linear, the design dies | ✅ **fired — 1.32× is not enough** |
 
 Two of the three have now been run, on a 7950X + RTX 4090. **NarrowNet survived its own killing
-experiment and got cheaper** (256 MB suffices, not 1 GB); **SAT-PoUW did not survive its own.**
+experiment**, though its 1 GB pool requirement survives with it — measured against a 24 GB card the
+crossover looks like 64 MB, but the advantage is a function of the opponent's VRAM and vanishes
+against an 80 GB datacentre card. **SAT-PoUW did not survive its own.**
 PoRT remains untested, and its known quota gap (§8.1) is still open.
 
 The repo's standing warning has now fired twice in both directions: the original cost model was
@@ -350,8 +378,8 @@ MIT
 | **验证成本** | 完整重算 | ~640 ms | ✅ **O(n)，代入检查** |
 | **工作有用吗** | ❌ | ❌ | ✅ **有真实产出** |
 | **实测了吗** | ✅ 已标定 | ❌ | ✅ **已实测，见下** |
-| **什么能否定它** | 池子 <256MB 则 GPU 赢 | 按 IP 限流信号太薄 | 求解器多核线性扩展 |
-| **核心风险** | 每实例需 ≥256MB | 批发 IP（/24）攻击 | **秘密求解器 = 挖矿优势** |
+| **什么能否定它** | 池子 <1GB 则 GPU 赢(对手是数据中心显存) | 按 IP 限流信号太薄 | 求解器多核线性扩展 |
+| **核心风险** | 每实例需 ≥1GB | 批发 IP（/24）攻击 | **秘密求解器 = 挖矿优势** |
 
 > **更新（2026-08-05）：SAT-PoUW 的一票否决实验已经开火。** 在 16 核 7950X 上实测，
 > CDCL 求解只能带来 **1.32×** 的小机器优势，而同一台机器上 NarrowNet 人为构造的争用
@@ -416,12 +444,12 @@ vs CDCL 的时间局部性），不在工作集大小。
 
 | 设计 | 一票否决实验 | 做了吗 |
 |---|---|---|
-| NarrowNet | **真实 CUDA 实测** —— 取代估算的 420 ns/步 | ✅ **活下来了：256MB 就够** |
+| NarrowNet | **真实 CUDA 实测** —— 取代估算的 420 ns/步 | ✅ **活下来了，但 ≥1GB 的门槛保留** |
 | PoRT | 网络模拟器：延迟是否真能主导 | ❌ |
 | SAT-PoUW | **MiniSat / CaDiCaL 的多线程扩展效率** —— 若接近线性则设计死亡 | ✅ **已开火：1.32× 不够** |
 
-三个里已经做掉两个（7950X + RTX 4090）。**NarrowNet 扛过了自己的一票否决，而且变便宜了**
-（256MB 就够，不必 1GB）；**SAT-PoUW 没扛过。** PoRT 仍未测，它已知的配额漏洞（§8.1）也还开着。
+三个里已经做掉两个（7950X + RTX 4090）。**NarrowNet 扛过了自己的一票否决**，但它 1GB 池的门槛也一并保留
+（但 1GB 门槛保留：对 24GB 消费卡拐点像 64MB，可这优势是**对手显存的函数**，换 80GB 数据中心卡就没了）；**SAT-PoUW 没扛过。** PoRT 仍未测，它已知的配额漏洞（§8.1）也还开着。
 
 本仓库那句警告已经在两个方向上各应验一次：最初的成本模型错了 15 倍（乐观），
 而它的修正版又错了约 4 倍（悲观）。**这里的估算至今没有一次经受住实测。**
@@ -441,9 +469,27 @@ vs CDCL 的时间局部性），不在工作集大小。
 | **256 MB** | 64 | **2.81×** | 8.19× | 1.31× | ✅ |
 | **1 GB** | 16 | **6.38×** | 18.57× | 2.76× | ✅ |
 
-**估算第二次出错，这回是反方向。** 修正后的模型预测 64MB 时 GPU 赢 4.5×，实测是打平；
-256MB 时 CPU 已经赢 2.81×。**上面「必须 ≥1GB」的结论予以撤回，256MB 就够** —— 这让设计
-实用得多（浏览器实例、每矿工内存占用）。
+**估算第二次出错，这回是反方向** —— 但重点不是那个数字，是**为什么**。
+
+大池子时 GPU **不是算力不够，是显存装不下更多链**：每链吞吐从 8192 链的 0.068 一路涨到
+16 链的 0.169 就饱和了，说明 256MB 时 4090 有算力闲着等显存。**所以上表每个数字都是
+「关于 24GB 显存」的陈述，不是关于 GPU 的。**
+
+于是要多大池子，取决于你把谁当对手（`bench/vram_sensitivity.py`，推演对 GPU 保守）：
+
+| 256MB 池，对手 | 链数 | CPU/GPU | | 1GB 池 | CPU/GPU |
+|---|---|---|---|---|---|
+| RTX 4090 24GB（实测） | 69 | 2.63× ✅ | | 4090 | 6.01× ✅ |
+| RTX 6000 Ada 48GB | 138 | 1.43× ✅ | | 48GB | 3.02× ✅ |
+| **H100/A100 80GB** | 230 | **0.97× ❌** | | 80GB | 1.82× ✅ |
+| **H200 141GB** | 406 | **0.58× ❌** | | 141GB | 1.08× ~ |
+
+**所以「必须 ≥1GB」保留，本节一度写下的那句撤回、现予收回。** 256MB 只挡得住消费级显卡。
+实测真正修正的是**理由**：原来的依据是「64MB 时 GPU 赢 4.5×」，那是错的（实测打平）；
+真正要 ≥1GB 的理由是**值得定价的对手手里有 80–141GB 显存**，而且 1GB 对上 H200 也只剩 1.08×。
+
+*（这一节曾按相反结论发布了几个小时。错在拿单张卡的结果下「CPU vs GPU」的普遍结论，
+而这个设计的全部前提恰恰是「结果取决于显存」。）*
 
 ⚠️ **给 GPU 的是 16.2GB，不是 24GB。** 脚本里 `VRAM_BUDGET = 0.72`，只取了桌面在用时空闲的
 22.5GB 的 72% —— 上表每一个链数都是这么来的。无显示输出的卡能多拿约 **1.48 倍**链数，而这些
