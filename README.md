@@ -309,7 +309,7 @@ Measured (T = 10⁶ sequential squarings, 1024-bit modulus):
 
 | Design | Killing experiment | Done? |
 |---|---|---|
-| NarrowNet | **Real CUDA measurement** — replacing the estimated 420 ns/step | ✅ **survived — 256 MB suffices** |
+| NarrowNet | **Real CUDA measurement** — replacing the estimated 420 ns/step | ✅ **survived — but ≥1 GB stands** |
 | PoRT | Network simulator: does latency actually dominate? | ❌ |
 | SAT-PoUW | **Multi-thread scaling of MiniSat / CaDiCaL** — if near-linear, the design dies | ✅ **fired — 1.32× is not enough** |
 
